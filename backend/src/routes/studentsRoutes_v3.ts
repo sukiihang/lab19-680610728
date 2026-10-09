@@ -1,7 +1,8 @@
-import { Router, Request, Response } from "express";
-import { prisma } from "../lib/prisma";
-import { checkAuth, checkRoleAdmin } from "../middlewares/authMiddleware";
-import { zStudentPostBody, zStudentPutBody, zStudentId } from "../lib/zodValidators";
+import { Router } from "express";
+import type { Request, Response } from "express";
+import { prisma } from "../lib/prisma.js";
+import { checkAuth, checkRoleAdmin } from "../middlewares/authMiddleware.js";
+import { zStudentPostBody, zStudentPutBody, zStudentId } from "../lib/zodValidators.js";
 import { z } from "zod";
 
 const router = Router();
@@ -84,8 +85,9 @@ router.put("/", checkAuth, async (req: Request, res: Response): Promise<void> =>
     }
 
     const { studentId, firstName, lastName, program, interests, emails } = parseResult.data;
+    const user = (req as any).user;
 
-    if (req.user?.role !== "ADMIN" && req.user?.studentId !== studentId) {
+    if (user?.role !== "ADMIN" && user?.studentId !== studentId) {
       res.status(403).json({
         success: false,
         message: "คุณไม่มีสิทธิ์แก้ไขข้อมูลของนักศึกษาท่านนี้",

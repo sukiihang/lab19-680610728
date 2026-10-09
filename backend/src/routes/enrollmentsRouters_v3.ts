@@ -1,7 +1,8 @@
-import { Router, Request, Response } from "express";
-import { prisma } from "../lib/prisma";
-import { checkAuth } from "../middlewares/authMiddleware";
-import { zEnrollmentBody, zEnrollmentPutBody } from "../lib/zodValidators";
+import { Router } from "express";
+import type { Request, Response } from "express";
+import { prisma } from "../lib/prisma.js";
+import { checkAuth } from "../middlewares/authMiddleware.js";
+import { zEnrollmentBody, zEnrollmentPutBody } from "../lib/zodValidators.js";
 
 const router = Router();
 
@@ -38,8 +39,9 @@ router.post("/", checkAuth, async (req: Request, res: Response): Promise<void> =
     }
 
     const { studentId, courseId } = parseResult.data;
+    const user = (req as any).user;
 
-    if (req.user?.role !== "ADMIN" && req.user?.studentId !== studentId) {
+    if (user?.role !== "ADMIN" && user?.studentId !== studentId) {
       res.status(403).json({
         success: false,
         message: "คุณไม่มีสิทธิ์ลงทะเบียนให้นักศึกษาท่านนี้",
@@ -112,8 +114,9 @@ router.put("/", checkAuth, async (req: Request, res: Response): Promise<void> =>
     }
 
     const { studentId, courseId, newCourseId } = parseResult.data;
+    const user = (req as any).user;
 
-    if (req.user?.role !== "ADMIN" && req.user?.studentId !== studentId) {
+    if (user?.role !== "ADMIN" && user?.studentId !== studentId) {
       res.status(403).json({
         success: false,
         message: "คุณไม่มีสิทธิ์แก้ไขการลงทะเบียนของนักศึกษาคนนี้",
@@ -215,8 +218,9 @@ router.delete("/", checkAuth, async (req: Request, res: Response): Promise<void>
     }
 
     const { studentId, courseId } = parseResult.data;
+    const user = (req as any).user;
 
-    if (req.user?.role !== "ADMIN" && req.user?.studentId !== studentId) {
+    if (user?.role !== "ADMIN" && user?.studentId !== studentId) {
       res.status(403).json({
         success: false,
         message: "คุณไม่มีสิทธิ์ยกเลิกการลงทะเบียนของนักศึกษาคนนี้",
