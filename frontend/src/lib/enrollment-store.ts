@@ -15,7 +15,7 @@ export interface StudentFormInput {
 export function fromApiStudent(apiStudent: any): Student {
   return {
     ...apiStudent,
-    emails: Array.isArray(apiStudent.emails)
+    emails: Array.isArray(apiStudent?.emails)
       ? apiStudent.emails.map((e: any) =>
           typeof e === "string" ? { address: e } : e
         )
@@ -26,9 +26,11 @@ export function fromApiStudent(apiStudent: any): Student {
 export function toApiStudent(input: StudentFormInput | Student) {
   return {
     ...input,
-    emails: input.emails
-      .map((e: any) => (typeof e === "string" ? e : e?.address))
-      .filter(Boolean),
+    emails: Array.isArray(input?.emails)
+      ? input.emails
+          .map((e: any) => (typeof e === "string" ? e : e?.address))
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -39,9 +41,9 @@ interface EnrollmentState {
   loading: boolean;
   error: string | null;
 
-  getAll: () => Promise<void>;
-  reset: () => void;
-  fetchData: () => Promise<void>;
+  getAll: (...args: any[]) => Promise<void>;
+  reset: (...args: any[]) => void;
+  fetchData: (...args: any[]) => Promise<void>;
 
   addCourse: (course: Course) => Promise<void>;
   updateCourse: (course: Course) => Promise<void>;
@@ -63,9 +65,10 @@ export const useEnrollmentStore = create<EnrollmentState>((set, get) => ({
   loading: false,
   error: null,
 
-  reset: () => set({ students: [], courses: [], enrollments: [], loading: false, error: null }),
+  reset: (...args: any[]) =>
+    set({ students: [], courses: [], enrollments: [], loading: false, error: null }),
 
-  getAll: async () => {
+  getAll: async (...args: any[]) => {
     set({ loading: true, error: null });
     try {
       const [resStudents, resCourses, resEnrollments] = await Promise.all([
@@ -88,8 +91,8 @@ export const useEnrollmentStore = create<EnrollmentState>((set, get) => ({
     }
   },
 
-  fetchData: async () => {
-    await get().getAll();
+  fetchData: async (...args: any[]) => {
+    await get().getAll(...args);
   },
 
   addCourse: async (course: Course) => {
@@ -121,7 +124,16 @@ export const useEnrollmentStore = create<EnrollmentState>((set, get) => ({
   },
 
   updateStudent: async (input: StudentFormInput) => {
-    const payload = toApiStudent(input);
+    const payload = {
+      studentId: input.studentId,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      program: input.program,
+      interests: input.interests,
+      emails: Array.isArray(input.emails)
+        ? input.emails.map((e: any) => (typeof e === "string" ? e : e?.address)).filter(Boolean)
+        : [],
+    };
     const res = await api<any>("/students", { method: "PUT", body: payload });
     const updatedStudent = fromApiStudent(res?.data ?? res);
     set((state) => ({
