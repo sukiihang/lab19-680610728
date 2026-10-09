@@ -1,186 +1,180 @@
-import { Router, type Request, type Response } from "express";
-import { zStudentPostBody, zStudentId } from "../libs/zodValidators.js";
-
-import type { Student, CustomRequest } from "../libs/types.js";
-
-// import authentication middleware
-import { authenticateToken } from "../middlewares/authenMiddleware.ts";
-import { checkRoleAdmin } from "../middlewares/checkRoleAdminDBMiddleware.ts";
-import { checkRoles } from "../middlewares/checkRolesDBMiddleware.ts";
-
-// import database
-import { PrismaClient } from "../../generated/prisma/client.ts";
-const prisma = new PrismaClient();
+import { Router, Request, Response } from "express";
+import { prisma } from "../lib/prisma";
+import { checkAuth, checkRoleAdmin } from "../middlewares/authMiddleware";
+import { zStudentPostBody, zStudentPutBody, zStudentId } from "../lib/zodValidators";
+import { z } from "zod";
 
 const router = Router();
 
-// GET /api/v3/students
-// get students (by program) with files
+router.get("/", checkAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const students = await prisma.student.findMany();
+    res.status(200).json({
+      success: true,
+      data: students,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์",
+    });
+  }
+});
 
-router.get(
-  "/",
-  authenticateToken,
-  checkRoleAdmin,
-  async (req: Request, res: Response) => {
-    try {
-      // get students from DB (with their files records)
-      // const students = await prisma.student.findMany();
-      const students = await prisma.student.findMany({
-        include: { files: true },
-      });
-
-      // get program name from query string (if any)
-      const program = req.query.program;
-      if (program) {
-        // filter students by program
-        let filtered_students = students.filter(
-          (student: any) => student.program === program,
-        );
-        return res.json({
-          success: true,
-          data: filtered_students,
-        });
-      } else {
-        // return all students
-        return res.json({
-          success: true,
-          data: students,
-        });
-      }
-    } catch (err) {
-      return res.json({
+router.post("/", checkAuth, checkRoleAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parseResult = zStudentPostBody.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
         success: false,
-        message: "Something is wrong, please try again",
-        error: err,
+        message: "ข้อมูลไม่ถูกต้องตามรูปแบบ",
+        errors: parseResult.error.flatten(),
       });
+      return;
     }
-  },
-);
 
-// GET /api/v3/students/{studentId}
-router.get(
-  "/:studentId",
-  authenticateToken,
-  checkRoles,
-  async (req: CustomRequest, res: Response) => {
-    try {
-      // get user, token from CustomRequest (token payload)
-      const user = req.user;
-      const token = req.token;
+    const { studentId, firstName, lastName, program, interests, emails } = parseResult.data;
 
-      // get parameterized variable: studentId
-      const studentId = req.params.studentId as string;
-      // validate studentId
-      const result = zStudentId.safeParse(studentId);
-      if (!result.success) {
-        return res.status(400).json({
-          message: "Validation failed",
-          errors: result.error.issues[0]?.message,
-        });
-      }
+    const existingStudent = await prisma.student.findUnique({
+      where: { studentId },
+    });
 
-      let found_student = null;
-      if (studentId) {
-        // get student from DB by studentId
-        found_student = await prisma.student.findUnique({
-          where: { studentId: studentId },
-        });
-      }
-
-      // if student is not found
-      if (!found_student) {
-        return res.status(404).json({
-          success: false,
-          message: "Student does not exists",
-        });
-      }
-
-      // if STUDENT does not own the data
-      if (
-        user?.role === "STUDENT" &&
-        found_student.studentId !== user.studentId
-      ) {
-        return res.status(403).json({
-          success: false,
-          message: "Forbidden access",
-        });
-      }
-
-      res.json({
-        success: true,
-        data: found_student,
-      });
-    } catch (err) {
-      return res.json({
+    if (existingStudent) {
+      res.status(409).json({
         success: false,
-        message: "Something is wrong, please try again",
-        error: err,
+        message: "รหัสนักศึกษานี้มีอยู่ในระบบแล้ว",
       });
+      return;
     }
-  },
-);
 
-// POST /api/v3/students, body = {new student data}
-// add a new student
-router.post(
-  "/",
-  authenticateToken,
-  checkRoleAdmin,
-  async (req: CustomRequest, res: Response) => {
-    try {
-      // get new student info from req.body
-      const body = (await req.body) as Student;
+    const newStudent = await prisma.student.create({
+      data: {
+        studentId,
+        firstName,
+        lastName,
+        program,
+        interests,
+        emails,
+      },
+    });
 
-      // validate req.body with predefined validator
-      const result = zStudentPostBody.safeParse(body); // check zod
-      if (!result.success) {
-        return res.status(400).json({
-          success: false,
-          message: "Validation failed",
-          errors: result.error.issues[0]?.message,
-        });
-      }
+    res.status(201).json({
+      success: true,
+      message: "เพิ่มนักศึกษาสำเร็จ",
+      data: newStudent,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์",
+    });
+  }
+});
 
-      //check if the studentId exists in DB
-      const student = await prisma.student.findUnique({
-        where: { studentId: result.data.studentId },
-      });
-      if (student) {
-        return res.status(400).json({
-          success: false,
-          message: "The StudentID is already taken.",
-        });
-      }
-
-      // add new student and write to DB
-      const { studentId, firstName, lastName, program, interests, emails } =
-        result.data;
-      const created = await prisma.student.create({
-        data: {
-          studentId,
-          firstName,
-          lastName,
-          program,
-          interests,
-          emails,
-        },
-      });
-
-      // add response header 'Link'
-      res.set("Link", `/api/v3/students/${created.studentId}`);
-
-      return res.status(201).json({
-        success: true,
-        data: created,
-      });
-    } catch (err) {
-      return res.status(500).json({
+router.put("/", checkAuth, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parseResult = zStudentPutBody.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
         success: false,
-        message: "Somthing is wrong, please try again",
-        error: err,
+        message: "ข้อมูลไม่ถูกต้องตามรูปแบบ",
+        errors: parseResult.error.flatten(),
       });
+      return;
     }
-  },
-);
+
+    const { studentId, firstName, lastName, program, interests, emails } = parseResult.data;
+
+    if (req.user?.role !== "ADMIN" && req.user?.studentId !== studentId) {
+      res.status(403).json({
+        success: false,
+        message: "คุณไม่มีสิทธิ์แก้ไขข้อมูลของนักศึกษาท่านนี้",
+      });
+      return;
+    }
+
+    const existingStudent = await prisma.student.findUnique({
+      where: { studentId },
+    });
+
+    if (!existingStudent) {
+      res.status(404).json({
+        success: false,
+        message: "ไม่พบข้อมูลนักศึกษา",
+      });
+      return;
+    }
+
+    const updateData: any = {};
+    if (firstName !== null && firstName !== undefined) updateData.firstName = firstName;
+    if (lastName !== null && lastName !== undefined) updateData.lastName = lastName;
+    if (program !== null && program !== undefined) updateData.program = program;
+    if (interests !== null && interests !== undefined) updateData.interests = interests;
+    if (emails !== null && emails !== undefined) updateData.emails = emails;
+
+    const updatedStudent = await prisma.student.update({
+      where: { studentId },
+      data: updateData,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "แก้ไขข้อมูลนักศึกษาสำเร็จ",
+      data: updatedStudent,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์",
+    });
+  }
+});
+
+router.delete("/", checkAuth, checkRoleAdmin, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const parseResult = z.object({ studentId: zStudentId }).safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        success: false,
+        message: "กรุณาระบุรหัสนักศึกษาที่ต้องการลบ",
+      });
+      return;
+    }
+
+    const { studentId } = parseResult.data;
+
+    const existingStudent = await prisma.student.findUnique({
+      where: { studentId },
+    });
+
+    if (!existingStudent) {
+      res.status(404).json({
+        success: false,
+        message: "ไม่พบข้อมูลนักศึกษา",
+      });
+      return;
+    }
+
+    const [deletedEnrollments, deletedStudent] = await prisma.$transaction([
+      prisma.enrollment.deleteMany({
+        where: { studentId },
+      }),
+      prisma.student.delete({
+        where: { studentId },
+      }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "ลบนักศึกษาและการลงทะเบียนสำเร็จ",
+      data: deletedStudent,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดภายในเซิร์ฟเวอร์",
+    });
+  }
+});
 
 export default router;
