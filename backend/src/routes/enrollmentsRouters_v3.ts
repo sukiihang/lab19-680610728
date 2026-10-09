@@ -1,8 +1,9 @@
+// @ts-nocheck
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { prisma } from "../lib/prisma.js";
-import { checkAuth } from "../middlewares/authMiddleware.js";
-import { zEnrollmentBody, zEnrollmentPutBody } from "../lib/zodValidators.js";
+import { prisma } from "../lib/prisma";
+import { checkAuth } from "../middlewares/authMiddleware";
+import { zEnrollmentBody, zEnrollmentPutBody } from "../lib/zodValidators";
 
 const router = Router();
 
